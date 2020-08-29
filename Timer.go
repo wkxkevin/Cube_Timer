@@ -7,6 +7,7 @@ import (
   //"os"
   //"bufio"
   "github.com/MarinX/keylogger"
+  "github.com/sirupsen/logrus"
 )
 
 func Scramble() {
@@ -69,47 +70,127 @@ func Scramble() {
   fmt.Print("\n")
 }
 
+func UpdateClock(s, ms int) (int, int){
+  fmt.Print("\033[u")
+  if ms < 10 {
+    fmt.Print("\033[K\r", s,":0",ms)
+  } else if ms < 100 {
+    fmt.Print("\033[K\r", s,":",ms)
+  } else {
+    ms = 0
+    s++
+    fmt.Print("\033[K\r", s,":0",ms)
+  }
+  fmt.Print("\033[2B")
+  ms++
+  time.Sleep(8871 * time.Microsecond)
+  return s, ms
+}
 
-func Stopwatch() {
+
+func Stopwatch(k *keylogger.KeyLogger) (int, int){
   var ms int
   var s int
-  fmt.Print("\033[s","\n\n")
-  var input string
-  fmt.Scanf(input)
-  for input != " "{
-    fmt.Print("\033[2A")
-    if ms < 10 {
-      fmt.Print("\033[K\r", s,":0",ms)
-    } else if ms < 100 {
-      fmt.Print("\033[K\r", s,":",ms)
-    } else {
-      ms = 0
-      s++
-      fmt.Print("\033[K\r", s,":0",ms)
+
+  fmt.Print("\n\033[s") // save timer position
+    for {
+      event := k.Read()
+      for e := range event {
+        if e.Type == keylogger.EvKey {
+          if e.KeyString() != "SPACE" {
+            fmt.Print("\033[K\r")
+            s, ms = UpdateClock(s, ms)
+          } else if e.KeyString() == "SPACE" {
+            return s, ms
+          }
+        }
+      }
     }
-
-    fmt.Print("\033[2B", "\033[u")
-    ms++
-    //fmt.Print("\033[1A", "\033[1B", "0","\0330")
-    time.Sleep(10871 * time.Microsecond)
-  }
-
+    return s, ms
 }
 
 
 func main() {
   rand.Seed(time.Now().UnixNano())
-  Scramble()
-  //scan := bufio.NewReader(os.Stdin)
-  //go Stopwatch()
-  //input, _ := scan.ReadByte()
-  var input string
-  fmt.Scanf(input)
-  for input != " " {
-    //input, _ = scan.ReadByte()
-    fmt.Scanf(input)
-    //fmt.Println()
+  keyboard := keylogger.FindKeyboardDevice()
+
+  // check if we found a path to keyboard
+  if len(keyboard) <= 0 {
+    logrus.Error("No keyboard found...you will need to provide manual input path")
+    return
   }
 
-  fmt.Println("\nDone2")
+  logrus.Println("Found a keyboard at", keyboard)
+  // init keylogger with keyboard
+  k, err := keylogger.New(keyboard)
+  if err != nil {
+    logrus.Error(err)
+    return
+  }
+  defer k.Close()
+  Scramble()
+  //input := k.Read().Type
+  event := k.Read()
+  for {
+    for e := range event {
+      if e.Type == keylogger.EvKey {
+        if e.KeyString() == "SPACE" {
+          for i := 0; i < 1000; i++ {
+            if e.KeyString() != "SPACE" {
+              break
+              break
+            }
+            time.Sleep(1 * time.Millisecond)
+          }
+          event = k.Read()
+          for i := range event {
+            if i.Type == keylogger.EvKey {
+              if i.KeyRelease() == true {
+                s, ms := Stopwatch(k)
+                fmt.Println("\n",s,":",ms)
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
 }
+
+/*
+func main() {
+  // find keyboard device, does not require a root permission
+	keyboard := keylogger.FindKeyboardDevice()
+
+	// check if we found a path to keyboard
+	if len(keyboard) <= 0 {
+		logrus.Error("No keyboard found...you will need to provide manual input path")
+		return
+	}
+
+	logrus.Println("Found a keyboard at", keyboard)
+	// init keylogger with keyboard
+	k, err := keylogger.New(keyboard)
+	if err != nil {
+		logrus.Error(err)
+		return
+	}
+
+	defer k.Close()
+  events := k.Read()
+
+  for e := range events {
+    switch e.Type {
+      case keylogger.EvKey:
+      if e.KeyPress() {
+        logrus.Println("[event] press key", e.KeyString())
+      }
+      if e.KeyPress() {
+        logrus.Println("[event] release key", e.KeyString())
+      }
+      break
+    }
+  }
+}
+*/
